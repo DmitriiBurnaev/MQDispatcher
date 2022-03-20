@@ -1,2 +1,2 @@
-add_executable(ex main.cpp)
-target_link_libraries(ex MQDispatcher)
+add_executable(main main.cpp)
+target_link_libraries(main MQDispatcher)
