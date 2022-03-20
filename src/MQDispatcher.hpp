@@ -18,62 +18,60 @@
 #include "queue_context.hpp"
 
 template <typename Key, typename Value>
-class MultiQueueProcessor {
+class MultiQueueDispatcher {
  public:
-  MultiQueueProcessor(std::function<std::shared_ptr<IQueue<Value>>()> qmaker)
-      : running{true}, queue_creator{std::move(qmaker)} {
+  MultiQueueDispatcher(std::function<std::shared_ptr<IQueue<Value>>()> qmaker)
+      : running_{true}, queue_creator_{std::move(qmaker)} {
     auto thread_count = std::thread::hardware_concurrency();
-    if (thread_count == 0) thread_count = 8;
+    constexpr auto default_thread_count = 8;
+    if (thread_count == 0) thread_count = default_thread_count;
     for (int i = 0; i < thread_count; ++i) {
-      std::thread th(std::bind(&MultiQueueProcessor::Process, this));
-      thrds.push_back(std::move(th));
+      std::thread th(std::bind(&MultiQueueDispatcher::Process, this));
+      thrds_.push_back(std::move(th));
     }
   }
 
-  ~MultiQueueProcessor() { StopProcessing(); }
+  ~MultiQueueDispatcher() { StopProcessing(); }
 
   void StopProcessing() {
-    running = false;
-    for (int i = 0; i < thrds.size(); ++i) {
-      if (thrds[i].joinable()) thrds[i].join();
+    running_ = false;
+    for (int i = 0; i < thrds_.size(); ++i) {
+      if (thrds_[i].joinable()) thrds_[i].join();
     }
   }
 
   void Subscribe(Key id, std::shared_ptr<IConsumer<Key, Value>> consumer) {
-    std::lock_guard<std::shared_mutex> lock{consumers_mtx};
-    auto iter = consumers.find(id);
-    if (iter == consumers.end()) {
-      consumers.insert(std::make_pair(id, consumer));
+    std::lock_guard<std::shared_mutex> lock{consumers_mtx_};
+    auto iter = consumers_.find(id);
+    if (iter == consumers_.end()) {
+      consumers_.insert(std::make_pair(id, consumer));
     }
   }
 
   void Unsubscribe(Key id) {
-    std::lock_guard<std::shared_mutex> lock{consumers_mtx};
-    auto iter = consumers.find(id);
-    if (iter != consumers.end()) consumers.erase(id);
+    std::lock_guard<std::shared_mutex> lock{consumers_mtx_};
+    auto iter = consumers_.find(id);
+    if (iter != consumers_.end()) consumers_.erase(id);
   }
 
-  void Enqueue(Key id, Value value) {
+  bool Enqueue(Key id, Value value) {
     {
-      std::shared_lock<std::shared_mutex> lock{queues_mtx};
-      auto iter = queues.find(id);
-      if (iter != queues.end()) {
-        iter->second->Enqueue(value);
-        return;
+      std::shared_lock<std::shared_mutex> lock{queues_mtx_};
+      auto iter = queues_.find(id);
+      if (iter != queues_.end()) {
+        return iter->second->Enqueue(value);
       }
     }
-    std::unique_lock<std::shared_mutex> ulck(queues_mtx);
-    queues.insert(std::make_pair(id, queue_creator()));
-    auto iter = queues.find(id);
-    if (iter != queues.end()) {
-      iter->second->Enqueue(value);
-    }
+    std::unique_lock<std::shared_mutex> ulck(queues_mtx_);
+    auto result = queues_.insert(std::make_pair(id, queue_creator_()));
+    if (result.second) return result.first->second->Enqueue(value);
+    return false;
   }
 
   Value Dequeue(Key id) {
-    std::shared_lock<std::shared_mutex> lock{queues_mtx};
-    auto iter = queues.find(id);
-    if (iter != queues.end()) {
+    std::shared_lock<std::shared_mutex> lock{queues_mtx_};
+    auto iter = queues_.find(id);
+    if (iter != queues_.end()) {
       lock.unlock();
       auto val = iter->second->Dequeue();
       return val;
@@ -83,10 +81,10 @@ class MultiQueueProcessor {
 
  protected:
   void Process() {
-    while (running) {
+    while (running_) {
       {
-        std::shared_lock<std::shared_mutex> consumers_lock{consumers_mtx};
-        for (auto iter = consumers.begin(); iter != consumers.end(); ++iter) {
+        std::shared_lock<std::shared_mutex> consumers_lock{consumers_mtx_};
+        for (auto iter = consumers_.begin(); iter != consumers_.end(); ++iter) {
           Value front = Dequeue(iter->first);
           if (front != Value{}) iter->second->Consume(iter->first, front);
         }
@@ -95,26 +93,28 @@ class MultiQueueProcessor {
   }
 
  protected:
-  std::shared_mutex consumers_mtx;
-  std::unordered_map<Key, std::shared_ptr<IConsumer<Key, Value>>> consumers;
-  std::shared_mutex queues_mtx;
-  std::unordered_map<Key, std::shared_ptr<IQueue<Value>>> queues;
+  std::shared_mutex consumers_mtx_;
+  std::unordered_map<Key, std::shared_ptr<IConsumer<Key, Value>>> consumers_;
+  std::shared_mutex queues_mtx_;
+  std::unordered_map<Key, std::shared_ptr<IQueue<Value>>> queues_;
 
-  std::atomic<bool> running;
-  std::recursive_mutex mtx;
-  std::vector<std::thread> thrds;
-  std::function<std::shared_ptr<IQueue<Value>>()> queue_creator;
+  std::atomic<bool> running_;
+  std::vector<std::thread> thrds_;
+  std::function<std::shared_ptr<IQueue<Value>>()> queue_creator_;
 };
 
-template <typename Key, typename Value>
-MultiQueueProcessor<Key, Value> create_mq() {
-  return MultiQueueProcessor<Key, Value>([]() {
-    // auto queue = std::make_shared<ListQueue<Value>>();
-    auto queue = std::make_shared<LockFreeQueue<Value>>();
-    auto max_size = 5;
-    // auto strategy = std::make_shared<DropOnOverflowStrategy<Value>>();
-    // auto strategy = std::make_shared<ExchangeOnOverflowStrategy<Value>>();
-    auto strategy = std::make_shared<BlockOnOverflowStrategy<Value>>();
-    return std::make_shared<QueueContext<Value>>(max_size, strategy, queue);
-  });
+template <typename Key, typename Value, typename QueueType = ListQueue<Value>,
+          typename OnOverflowStrategy = DropOnOverflowStrategy<Value>>
+std::shared_ptr<MultiQueueDispatcher<Key, Value>> create_mqd(
+    std::size_t max_size = 0) {
+  if (max_size == 0) {
+    return std::make_shared<MultiQueueDispatcher<Key, Value>>(
+        [] { return std::make_shared<QueueType>(); });
+  } else {
+    return std::make_shared<MultiQueueDispatcher<Key, Value>>([max_size] {
+      auto queue = std::make_shared<QueueType>();
+      auto strategy = std::make_shared<OnOverflowStrategy>();
+      return std::make_shared<QueueContext<Value>>(max_size, strategy, queue);
+    });
+  }
 }

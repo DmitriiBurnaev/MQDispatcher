@@ -12,5 +12,7 @@ struct DropOnOverflowStrategy : public IOnOverflowStrategy<Value> {
     if (queue->Size() >= max_size) return false;
     return queue->Enqueue(value);
   }
+
+ private:
   std::mutex mtx_;
 };

@@ -12,5 +12,7 @@ struct ExchangeOnOverflowStrategy : public IOnOverflowStrategy<Value> {
     }
     return queue->Enqueue(value);
   }
+
+ private:
   std::mutex mtx_;
 };
