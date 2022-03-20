@@ -10,11 +10,14 @@ struct LockFreeQueue final : public IQueue<Value> {
     if (result) ++size_;
     return result;
   }
-  Value Dequeue() override {
+  std::optional<Value> Dequeue() override {
     Value val{};
     auto result = queue_.pop(val);
-    if (result) --size_;
-    return val;
+    if (result) {
+      --size_;
+      return val;
+    }
+    return std::nullopt;
   }
   std::size_t Size() override { return size_; }
 

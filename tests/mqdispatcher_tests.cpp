@@ -11,8 +11,8 @@ BOOST_AUTO_TEST_CASE(check_list_queue) {
   constexpr auto queue_number = 1;
   mqd->Enqueue(queue_number, "First");
   mqd->Enqueue(queue_number, "Second");
-  BOOST_REQUIRE_EQUAL(mqd->Dequeue(queue_number), "First");
-  BOOST_REQUIRE_EQUAL(mqd->Dequeue(queue_number), "Second");
+  BOOST_REQUIRE_EQUAL(mqd->Dequeue(queue_number).value(), "First");
+  BOOST_REQUIRE_EQUAL(mqd->Dequeue(queue_number).value(), "Second");
 }
 
 BOOST_AUTO_TEST_CASE(check_lockfree_queue) {
@@ -20,8 +20,8 @@ BOOST_AUTO_TEST_CASE(check_lockfree_queue) {
   constexpr auto queue_number = 1;
   mqd->Enqueue(queue_number, 5);
   mqd->Enqueue(queue_number, 55);
-  BOOST_REQUIRE_EQUAL(mqd->Dequeue(queue_number), 5);
-  BOOST_REQUIRE_EQUAL(mqd->Dequeue(queue_number), 55);
+  BOOST_REQUIRE_EQUAL(mqd->Dequeue(queue_number).value(), 5);
+  BOOST_REQUIRE_EQUAL(mqd->Dequeue(queue_number).value(), 55);
 }
 
 BOOST_AUTO_TEST_CASE(check_drop_strategy) {
@@ -32,9 +32,9 @@ BOOST_AUTO_TEST_CASE(check_drop_strategy) {
   mqd->Enqueue(queue_number, "First");
   mqd->Enqueue(queue_number, "Second");
   mqd->Enqueue(queue_number, "Third");
-  BOOST_REQUIRE_EQUAL(mqd->Dequeue(queue_number), "First");
-  BOOST_REQUIRE_EQUAL(mqd->Dequeue(queue_number), "Second");
-  BOOST_REQUIRE_EQUAL(mqd->Dequeue(queue_number), "");
+  BOOST_REQUIRE_EQUAL(mqd->Dequeue(queue_number).value(), "First");
+  BOOST_REQUIRE_EQUAL(mqd->Dequeue(queue_number).value(), "Second");
+  BOOST_REQUIRE_EQUAL(mqd->Dequeue(queue_number).has_value(), false);
 }
 
 BOOST_AUTO_TEST_CASE(check_exchange_strategy) {
@@ -46,8 +46,8 @@ BOOST_AUTO_TEST_CASE(check_exchange_strategy) {
   mqd->Enqueue(queue_number, "First");
   mqd->Enqueue(queue_number, "Second");
   mqd->Enqueue(queue_number, "Third");
-  BOOST_REQUIRE_EQUAL(mqd->Dequeue(queue_number), "Second");
-  BOOST_REQUIRE_EQUAL(mqd->Dequeue(queue_number), "Third");
+  BOOST_REQUIRE_EQUAL(mqd->Dequeue(queue_number).value(), "Second");
+  BOOST_REQUIRE_EQUAL(mqd->Dequeue(queue_number).value(), "Third");
 }
 
 BOOST_AUTO_TEST_CASE(check_block_strategy) {
@@ -60,9 +60,9 @@ BOOST_AUTO_TEST_CASE(check_block_strategy) {
   mqd->Enqueue(queue_number, 55);
   std::thread th([mqd, queue_number] {
     mqd->Enqueue(queue_number, 77);
-    BOOST_REQUIRE_EQUAL(mqd->Dequeue(queue_number), 55);
+    BOOST_REQUIRE_EQUAL(mqd->Dequeue(queue_number).value(), 55);
   });
-  BOOST_REQUIRE_EQUAL(mqd->Dequeue(queue_number), 5);
+  BOOST_REQUIRE_EQUAL(mqd->Dequeue(queue_number).value(), 5);
   th.join();
 }
 

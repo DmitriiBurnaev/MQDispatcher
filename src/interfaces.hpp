@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <optional>
 
 template <typename Key, typename Value>
 struct IConsumer {
@@ -12,7 +13,7 @@ template <typename Value>
 struct IQueue {
   virtual ~IQueue() = default;
   virtual bool Enqueue(Value value) = 0;
-  virtual Value Dequeue() = 0;
+  virtual std::optional<Value> Dequeue() = 0;
   virtual std::size_t Size() = 0;
 };
 

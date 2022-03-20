@@ -4,6 +4,7 @@
 #include <list>
 #include <map>
 #include <mutex>
+#include <optional>
 #include <shared_mutex>
 #include <thread>
 #include <unordered_map>
@@ -68,7 +69,7 @@ class MultiQueueDispatcher {
     return false;
   }
 
-  Value Dequeue(Key id) {
+  std::optional<Value> Dequeue(Key id) {
     std::shared_lock<std::shared_mutex> lock{queues_mtx_};
     auto iter = queues_.find(id);
     if (iter != queues_.end()) {
@@ -76,7 +77,7 @@ class MultiQueueDispatcher {
       auto val = iter->second->Dequeue();
       return val;
     }
-    return Value{};
+    return std::nullopt;
   }
 
  protected:
@@ -85,8 +86,8 @@ class MultiQueueDispatcher {
       {
         std::shared_lock<std::shared_mutex> consumers_lock{consumers_mtx_};
         for (auto iter = consumers_.begin(); iter != consumers_.end(); ++iter) {
-          Value front = Dequeue(iter->first);
-          if (front != Value{}) iter->second->Consume(iter->first, front);
+          auto front = Dequeue(iter->first);
+          if (front) iter->second->Consume(iter->first, front.value());
         }
       }
     }

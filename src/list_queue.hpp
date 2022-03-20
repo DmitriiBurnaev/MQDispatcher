@@ -10,14 +10,14 @@ struct ListQueue final : public IQueue<Value> {
     list_.push_back(value);
     return true;
   }
-  Value Dequeue() override {
+  std::optional<Value> Dequeue() override {
     std::lock_guard<std::mutex> lck(mtx_);
     if (list_.size() > 0) {
       auto front = list_.front();
       list_.pop_front();
       return front;
     }
-    return Value{};
+    return std::nullopt;
   }
   std::size_t Size() override {
     std::lock_guard<std::mutex> lck(mtx_);

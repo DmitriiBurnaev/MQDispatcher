@@ -13,7 +13,7 @@ struct QueueContext : public IQueue<Value> {
   bool Enqueue(Value value) override {
     return strategy_->Enqueue(value, queue_, max_size_);
   }
-  Value Dequeue() override { return queue_->Dequeue(); }
+  std::optional<Value> Dequeue() override { return queue_->Dequeue(); }
   std::size_t Size() override { return queue_->Size(); }
 
  private:
